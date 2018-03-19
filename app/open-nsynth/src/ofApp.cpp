@@ -14,8 +14,9 @@ limitations under the License.
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#if !defined( TARGET_OSX )
 #include <linux/i2c-dev.h>
-
+#endif
 #include "ofApp.h"
 
 
@@ -57,13 +58,18 @@ void ofApp::setup(){
 	}
 	setScreen(&particleScreen);
 
+#if defined( TARGET_OSX )
+    i2c = -1;
+#else
 	i2c = open("/dev/i2c-1", O_RDWR);
 	oledScreenDriver.setup(i2c, OLED_I2C_ADDR, OLED_BCM_RESET_PIN);
+#endif
 
 	inputsRead = false;
 	readInputs();
 
 	auto midiDevice = getDefault(settings["midi"]["device"], "/dev/ttyAMA0");
+
 	// Convert from MIDI channel 1-16 to the wire representation
 	// 0-15.
 	int midiChannel = getDefault(settings["midi"]["channel"], 7) - 1;
@@ -164,6 +170,7 @@ void ofApp::update(){
 
 
 void ofApp::readInputs(){
+#if !defined(TARGET_OSX)
 	if(i2c < 0){
 		return;
 	}
@@ -217,6 +224,7 @@ void ofApp::readInputs(){
 
 	inputsRead = true;
 	lastInputsMessage = message;
+#endif
 }
 
 

@@ -14,13 +14,16 @@ limitations under the License.
 #include "OledScreenDriver.h"
 
 #include <fcntl.h>
-#include <linux/i2c-dev.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#if !defined(TARGET_OSX)
+#include <linux/i2c-dev.h>
+#endif
 
 
 bool OledScreenDriver::setup(int i2cFd_, uint8_t address_, int resetPin){
+#if !defined(TARGET_OSX)
 	i2cFd = i2cFd_;
 	address = address_;
 
@@ -55,18 +58,19 @@ bool OledScreenDriver::setup(int i2cFd_, uint8_t address_, int resetPin){
 	if(write(i2cFd, setup2, sizeof(setup2)) != sizeof(setup2)){
 		return false;
 	}
-
-	return true;
+#endif
+  return true;
 }
 
 
 void OledScreenDriver::draw(ofFbo &fbo){
+#if !defined(TARGET_OSX)
 	if(i2cFd < 0){
 		return;
 	}
-	if(ioctl(i2cFd, I2C_SLAVE, address) < 0){
-		return;
-	}
+    if(ioctl(i2cFd, I2C_SLAVE, address) < 0){
+      return;
+    }
 
 	ofPixels pixels;
 	fbo.readToPixels(pixels);
@@ -109,6 +113,7 @@ void OledScreenDriver::draw(ofFbo &fbo){
 	if(write(i2cFd, flush, sizeof(flush)) != sizeof(flush)){
 		return;
 	}
+#endif
 }
 
 
@@ -118,10 +123,10 @@ void OledScreenDriver::reset(int resetPin){
 	constexpr int SET = 7;
 	constexpr int CLEAR = 10;
 	constexpr int MAP_SIZE = 0xb4;
-
-	if(resetPin < 0){
-		return;
-	}
+#if !defined(TARGET_OSX)
+    if(resetPin < 0){
+      return;
+    }
 
 	// Mmap the GPIO device to access the pins.
 	int fd = open("/dev/gpiomem", O_RDWR | O_SYNC);
@@ -168,4 +173,5 @@ void OledScreenDriver::reset(int resetPin){
 	usleep(1000);
 
 	munmap(const_cast<uint32_t *>(gpioReg), MAP_SIZE);
+#endif
 }
