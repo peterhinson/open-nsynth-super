@@ -61,8 +61,8 @@ void ofApp::setup(){
 #if defined( TARGET_OSX )
     i2c = -1;
 #else
-	i2c = open("/dev/i2c-1", O_RDWR);
-	oledScreenDriver.setup(i2c, OLED_I2C_ADDR, OLED_BCM_RESET_PIN);
+    i2c = open("/dev/i2c-1", O_RDWR);
+    oledScreenDriver.setup(i2c, OLED_I2C_ADDR, OLED_BCM_RESET_PIN);
 #endif
 
 	inputsRead = false;
@@ -139,35 +139,76 @@ void ofApp::setupSynth(){
 void ofApp::update(){
 	readInputs();
 
-	synthMutex.lock();
-	synth.set_position(analogInputs[0].getNormalized());
-	synth.set_attack(0.0001 + analogInputs[1].getNormalized());
-	synth.set_decay(analogInputs[2].getNormalized());
-	synth.set_sustain(analogInputs[3].getNormalized());
-	synth.set_release(analogInputs[4].getNormalized());
-	synth.set_volume(analogInputs[5].getNormalized());
-	synth.set_interpolation_position(
-			static_cast<float>(gridSelection[0]) / (GRID_SIZE - 1),
-			static_cast<float>(gridSelection[1]) / (GRID_SIZE - 1));
-	synthMutex.unlock();
+    synthMutex.lock();
+    synth.set_position(analogInputs[0].getNormalized());
+    synth.set_attack(0.0001 + analogInputs[1].getNormalized());
+    synth.set_decay(analogInputs[2].getNormalized());
+    synth.set_sustain(analogInputs[3].getNormalized());
+    synth.set_release(analogInputs[4].getNormalized());
+    synth.set_volume(analogInputs[5].getNormalized());
+    synth.set_interpolation_position(
+            static_cast<float>(gridSelection[0]) / (GRID_SIZE - 1),
+            static_cast<float>(gridSelection[1]) / (GRID_SIZE - 1));
+    synthMutex.unlock();
 
 	// The on and off handling is placeholder code. The OSC thread should
 	// drive synth directly to avoid the large latency of the rendering loop.
 	ofxOscMessage msg;
 	while(oscIn.getNextMessage(msg)){
         string addr = msg.getAddress();
-		if(addr == "/on"){
+		if(addr == "/on" || addr == "/1") {
 			synthMutex.lock();
+
 			synth.on(msg.getArgAsInt(0), msg.getArgAsFloat(1));
 			synthMutex.unlock();
-		}else if(addr == "/off"){
+		}
+        else if(addr == "/off") {
 			synthMutex.lock();
 			synth.off(msg.getArgAsInt(0));
 			synthMutex.unlock();
 		}
+        else if(addr == "/mix") { // [0.0-1.0] x instrument mix, y instrument mix
+            synthMutex.lock();
+            updateGridSelection({
+                                    static_cast<int>(GRID_SIZE *
+                                    msg.getArgAsFloat(1)),
+                                    static_cast<int>(GRID_SIZE *
+                                    msg.getArgAsFloat(1))
+                                });
+
+						synth.set_interpolation_position(
+							static_cast<float>(gridSelection[0]) / (GRID_SIZE - 1),
+							static_cast<float>(gridSelection[1]) / (GRID_SIZE - 1));
+            synthMutex.unlock();
+        }
+        else if(addr == "/pos") { // [0-255] sample position
+//            synthMutex.lock();
+            updateAnalogInput(0, std::min(msg.getArgAsInt(0), 255), true);
+            synth.set_position(analogInputs[0].getNormalized());
+//            synthMutex.unlock();
+        }
+        else if(addr == "/env") { // [0-255] attack, decay, sustain, release
+//            synthMutex.lock();
+            updateAnalogInput(1, std::min(msg.getArgAsInt(0), 255), true);
+            updateAnalogInput(2, std::min(msg.getArgAsInt(1), 255), true);
+            updateAnalogInput(3, std::min(msg.getArgAsInt(2), 255), true);
+            updateAnalogInput(4, std::min(msg.getArgAsInt(3), 255), true);
+            synth.set_attack(0.0001 + analogInputs[1].getNormalized());
+            synth.set_decay(analogInputs[2].getNormalized());
+            synth.set_sustain(analogInputs[3].getNormalized());
+            synth.set_release(analogInputs[4].getNormalized());
+//            synthMutex.unlock();
+        }
+        else if(addr == "/inst") { // rotate instrument slots [-1,0,1] slot 1, slot 2, slot 3, slot 4
+//          synthMutex.lock();
+          updateRotary(0, msg.getArgAsInt(0));
+          updateRotary(1, msg.getArgAsInt(1));
+          updateRotary(2, msg.getArgAsInt(2));
+          updateRotary(3, msg.getArgAsInt(3));
+//          synthMutex.unlock();
+        }
 	}
 }
-
 
 void ofApp::readInputs(){
 #if !defined(TARGET_OSX)
@@ -440,11 +481,11 @@ void ofApp::audioOut(ofSoundBuffer& buffer){
 		synth.audio_loop(monoBuffer, sampleRate);
 		synthMutex.unlock();
 	}else{
-		monoBuffer.assign(n, 0.0f);
+        monoBuffer.assign(n, 0.0f);
 	}
 	int j = 0;
 	for(int i = 0; i < n; i++){
-		buffer[j++] = monoBuffer[i];
+        buffer[j++] = monoBuffer[i];
 		buffer[j++] = monoBuffer[i];
 		if(isnan(monoBuffer[i])){
 			printf("ERROR: sGOT A NaN!!!\n");
